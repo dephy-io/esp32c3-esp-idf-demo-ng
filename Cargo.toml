@@ -1,0 +1,53 @@
+[package]
+name = "esp32c3-dephy-ng"
+version = "0.1.0"
+authors = ["krhougs <_@xn--6g8h.st>"]
+edition = "2021"
+resolver = "2"
+rust-version = "1.77"
+
+[[bin]]
+name = "esp32c3-dephy-ng"
+harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors
+
+[profile.release]
+opt-level = "s"
+
+[profile.dev]
+debug = true    # Symbols are nice and they don't increase the size on Flash
+opt-level = "z"
+
+[features]
+default = []
+
+experimental = ["esp-idf-svc/experimental"]
+
+[dependencies]
+log = "0.4"
+esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+static_cell = "2.1.0"
+edge-executor = { version = "0.4.1", features = ["critical-section", "portable-atomic"] }
+rand_core = "0.9.0"
+k256 = { version = "0.13.4", default-features = false, features = [
+  "std",
+  "alloc",
+  "digest",
+  "ecdsa",
+  "ecdsa-core",
+  "schnorr",
+  "signature",
+] }
+hex = { version = "0.4.3", default-features = false, features = ["std", "alloc"] }
+sha2 = { version = "0.10.8" }
+sha3 = { version = "0.10.8" }
+lazy_static = "1.5.0"
+serde = "1.0.217"
+serde_json = "1.0.138"
+
+[build-dependencies]
+embuild = "0.33"
+dotenvy = "0.15.7"
+paste = "1.0.14"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_websocket_client", version = "1.4.0" }

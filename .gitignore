@@ -1,0 +1,7 @@
+/.vscode
+/.embuild
+/target
+/Cargo.lock
+
+build.env
+*_key.bin
