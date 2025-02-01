@@ -6,14 +6,21 @@ pub mod nostr;
 pub mod preludes;
 
 use edge_executor::LocalExecutor;
-use esp_idf_svc::hal::task::block_on;
-use log::{debug, info};
+use esp_idf_svc::{
+    hal::task::block_on,
+    http::{client::EspHttpConnection, Method},
+    timer::EspTaskTimerService,
+};
+use net::{create_default_http_client, get_public_ip, ntp_sync, request_text, wifi_create_loop};
+use nostr::{send_new_event, NostrEvent};
 use preludes::*;
-use std::sync::Arc;
+use std::sync::{mpsc::SendError, Arc};
 
 fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+
+    let _mounted_eventfs = esp_idf_svc::io::vfs::MountedEventfs::mount(5).unwrap();
 
     let executor: Arc<LocalExecutor> = Arc::new(Default::default());
 
@@ -21,19 +28,28 @@ fn main() {
     info!("ETH_ADDRESS_STRING: {}", &*crypto::ETH_ADDRESS_STRING);
     info!("NOSTR_PUBKEY_STRING: {}", &*crypto::NOSTR_PUBKEY_STRING);
 
-    block_on(executor.run(async_main(executor_move)));
-    log::info!("Hello, world03!");
+    if let Err(e) = block_on(executor.run(async_main(executor_move))) {
+        error!("Main task failed: {}", e);
+    }
 }
 
-async fn async_main(executor: Arc<LocalExecutor<'_>>) {
-    log::info!("Hello, world11!");
-    log::debug!("Hello, world!");
-    log::info!("Hello, world1!");
-    // app_tests::test_ethereum_address();
-    executor.spawn(t2()).await;
+async fn async_main(executor: Arc<LocalExecutor<'_>>) -> Result<()> {
+    let timer = EspTaskTimerService::new()?;
+    let _wifi = wifi_create_loop(timer.clone()).await?;
+    let _ntp = ntp_sync(timer).await?;
+
+    if let Ok(Some(ip)) = get_public_ip() {
+        info!("Public IP: {}", ip);
+    } else {
+        warn!("Failed to get public IP");
+    }
+
+    let nostr_task = executor.spawn(nostr_loop());
+    nostr_task.await?;
+    Ok(())
 }
 
-async fn t2() {
-    log::debug!("Hello, world2!");
-    log::info!("Hello, world13!");
+async fn nostr_loop() -> Result<()> {
+    send_new_event().await?;
+    Ok(())
 }
