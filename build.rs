@@ -43,7 +43,7 @@ fn build_env() -> Result<(), Box<dyn std::error::Error>> {
 
     env_string!(
         "DEPHY_ENDPOINT_HTTP",
-        "https://send.testnet.dephy.io/dephy/signed_message"
+        "https://relay-rb.dephy.dev/api/events"
     );
     env_string!("DEPHY_ENDPOINT_MQTT", "mqtt://demo-edge.dephy.io:1883");
     env_number!("APP_SEND_LOOP_DURATION", u64, 10);
@@ -55,6 +55,7 @@ fn build_env() -> Result<(), Box<dyn std::error::Error>> {
         "1111111111111111111111111111111111111111"
     );
 
+    env_string!("DEBUG_FORCE_PRIVKEY", "");
     env_string!("WIFI_SSID", "");
     env_string!("WIFI_PASSWD", "");
 

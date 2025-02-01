@@ -20,6 +20,23 @@ pub fn random_key() -> [u8; 32] {
     }
 }
 
+pub fn read_debug_force_privkey() -> Option<[u8; 32]> {
+    if DEBUG_FORCE_PRIVKEY.is_empty() {
+        return None;
+    }
+    if DEBUG_FORCE_PRIVKEY.len() != 64 {
+        warn!("DEBUG_FORCE_PRIVKEY is not 64 bytes long, ignoring.");
+        return None;
+    }
+    let mut key = [0u8; 32];
+    if let Err(e) = hex::decode_to_slice(DEBUG_FORCE_PRIVKEY, &mut key) {
+        warn!("Failed to decode DEBUG_FORCE_PRIVKEY: {}", e);
+        return None;
+    }
+    warn!("using key from DEBUG_FORCE_PRIVKEY");
+    Some(key)
+}
+
 pub fn read_key_from_efuse() -> Option<[u8; 32]> {
     unsafe {
         if esp_efuse_key_block_unused(esp_efuse_block_t_EFUSE_BLK_KEY1) {
@@ -46,6 +63,7 @@ pub fn read_key_from_efuse() -> Option<[u8; 32]> {
             256
         ))
         .unwrap();
+        info!("Got key from efuse");
         return Some(buf);
     }
 }
@@ -80,11 +98,7 @@ pub trait VerifyingKeyExt {
 
 impl VerifyingKeyExt for VerifyingKey {
     fn to_nostr_pubkey_bytes(&self) -> [u8; 32] {
-        // let bytes = self.as_affine().to_encoded_point(true);
-        // let bytes = bytes.as_bytes();
         let bytes = self.to_bytes();
-        // info!("bytes length: {:?}", bytes.len());
-        // let pubkey_bytes = &bytes[1..];
         bytes.try_into().unwrap()
     }
     fn to_nostr_pubkey_str(&self) -> String {
@@ -103,7 +117,10 @@ pub fn get_device_secret_key() -> SecretKey {
 }
 
 pub fn get_device_signing_key() -> SigningKey {
-    let key = read_key_from_efuse();
+    let mut key = read_debug_force_privkey();
+    if key.is_none() {
+        key = read_key_from_efuse();
+    }
     if key.is_none() {
         warn!("No key found in efuse, using random key.");
     }
