@@ -1,16 +1,18 @@
 use crate::{net::request_text, preludes::*};
 use sha2::{Digest, Sha256};
+use signature::Signer;
 
 pub const EVENT_KIND: u16 = 1573;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NostrEventToComputeId {
-    pub pubkey: String,
-    pub created_at: u64,
-    pub kind: u16,
-    pub tags: Vec<NostrEventTag>,
-    pub content: String,
-}
+pub struct NostrEventToComputeId(
+    pub u8,
+    pub String,
+    pub u64,
+    pub u16,
+    pub Vec<NostrEventTag>,
+    pub String,
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrEvent {
@@ -35,42 +37,32 @@ impl NostrEvent {
         let pubkey = NOSTR_PUBKEY_STRING.clone();
         let created_at = now_secs();
 
-        let id_e = NostrEventToComputeId {
-            pubkey,
-            created_at,
-            kind,
-            tags,
-            content,
-        };
-        let id_e_json = json!([0]);
-        let id_e_json = serde_json::to_string(&id_e_json).unwrap();
+        let id_e = NostrEventToComputeId(0, pubkey, created_at, kind, tags, content);
+        let id_e_json = serde_json::to_string(&id_e).unwrap();
+
         let mut hasher = Sha256::new();
         hasher.update(id_e_json.as_bytes());
         let hash = hasher.finalize();
-        let id = hex::encode(hash);
-        let sig = "";
+        let id = hex::encode(&hash);
+
+        let sigst = SIGNER_MOVE.sign(id_e_json.as_bytes()); // SHA256 hash is done within the sign function
+        let sig = sigst.to_bytes();
+        let sig = hex::encode(sig);
 
         Self {
-            id: id.into(),
-            pubkey: id_e.pubkey,
+            id,
+            pubkey: id_e.1,
             created_at,
             kind,
-            tags: id_e.tags,
-            content: id_e.content,
-            sig: sig.into(),
+            tags: id_e.4,
+            content: id_e.5,
+            sig,
         }
     }
 }
 
-pub async fn send_new_event() -> Result<()> {
-    let event = NostrEventToSend {
-        event: NostrEvent::new(
-            EVENT_KIND,
-            vec![vec!["s".to_string(), "asdjaksdghjkas".to_string()]],
-            "Hello, world!".to_string(),
-        ),
-    };
-    info!("event: {:?}", event);
+pub async fn send_new_event(event: NostrEvent) -> Result<()> {
+    let event = NostrEventToSend { event };
     let event_json = serde_json::to_string(&event)?;
     let (status, body) = request_text(
         DEPHY_ENDPOINT_HTTP,
@@ -78,13 +70,25 @@ pub async fn send_new_event() -> Result<()> {
         None,
         Some(event_json.as_bytes()),
     )?;
-    info!("status: {}", status);
-    info!("body: {}", body);
 
     if status == 200 {
-        info!("event sent");
+        info!("Event sent");
     } else {
         warn!("Failed to send event: {}", body);
     }
     Ok(())
+}
+
+pub fn create_random_event() -> NostrEvent {
+    NostrEvent::new(
+        EVENT_KIND,
+        vec![
+            vec!["s".to_string(), "0".to_string()],
+            vec![
+                "p".to_string(),
+                "6f7bb11c04d792784c9dfcb4246e9afc0d6a7eae549531c2fce51adf09b2887e".to_string(),
+            ],
+        ],
+        hex::encode(random_key()),
+    )
 }

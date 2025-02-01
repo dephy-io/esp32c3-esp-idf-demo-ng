@@ -1,16 +1,14 @@
-use std::{ffi::c_void, ptr::null};
-
+use crate::preludes::*;
 use esp_idf_svc::sys::{
     esp, esp_efuse_block_t_EFUSE_BLK_KEY1, esp_efuse_desc_t, esp_efuse_get_field_size,
     esp_efuse_key_block_unused, esp_efuse_read_field_blob, esp_fill_random,
 };
 pub use k256::{
-    ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey},
     elliptic_curve::{rand_core::RngCore, sec1::ToEncodedPoint},
+    schnorr::{Signature, SigningKey, VerifyingKey},
 };
 pub use k256::{PublicKey, SecretKey};
-use log::{debug, warn};
-use sha3::{Digest, Keccak256};
+use std::{ffi::c_void, ptr::null};
 
 pub static ZERO_ARRAY_32: [u8; 32] = [0; 32];
 
@@ -53,61 +51,41 @@ pub fn read_key_from_efuse() -> Option<[u8; 32]> {
 }
 pub trait KeyArr {
     fn to_secret_key(&self) -> SecretKey;
+    fn to_signing_key(&self) -> SigningKey;
 }
 
 impl KeyArr for [u8; 32] {
     fn to_secret_key(&self) -> SecretKey {
         SecretKey::from_slice(self).unwrap()
     }
-}
-
-pub trait SecretKeyExt {
-    fn to_verifying_key(&self) -> VerifyingKey;
-    fn to_signing_key(&self) -> SigningKey;
-    fn to_nostr_pubkey(&self) -> String;
-}
-
-impl SecretKeyExt for SecretKey {
-    fn to_verifying_key(&self) -> VerifyingKey {
-        self.public_key().into()
-    }
     fn to_signing_key(&self) -> SigningKey {
-        self.into()
+        SigningKey::from_bytes(self).unwrap()
     }
-    fn to_nostr_pubkey(&self) -> String {
-        let pubkey = self.public_key();
-        let pubkey_bytes = pubkey.to_encoded_point(true);
-        let pubkey_bytes = pubkey_bytes.as_bytes();
-        hex::encode(&pubkey_bytes[1..])
+}
+
+pub trait SigningKeyExt {
+    fn to_verifying_key(&self) -> VerifyingKey;
+}
+
+impl SigningKeyExt for SigningKey {
+    fn to_verifying_key(&self) -> VerifyingKey {
+        self.verifying_key().clone()
     }
 }
 
 pub trait VerifyingKeyExt {
-    fn to_eth_address_bytes(&self) -> [u8; 20];
-    fn to_eth_address_str(&self) -> String;
     fn to_nostr_pubkey_bytes(&self) -> [u8; 32];
     fn to_nostr_pubkey_str(&self) -> String;
 }
 
 impl VerifyingKeyExt for VerifyingKey {
-    fn to_eth_address_bytes(&self) -> [u8; 20] {
-        let key = self.to_encoded_point(false);
-        let key = key.as_bytes();
-        let mut hasher = Keccak256::default();
-        hasher.update(&key[1..]);
-        let hash: [u8; 32] = hasher.finalize().into();
-        let addr = &hash[12..32];
-        addr.try_into().unwrap()
-    }
-    fn to_eth_address_str(&self) -> String {
-        let b = self.to_eth_address_bytes();
-        format!("0x{}", hex::encode(b))
-    }
     fn to_nostr_pubkey_bytes(&self) -> [u8; 32] {
-        let pubkey = self.to_encoded_point(true);
-        let pubkey_bytes = pubkey.as_bytes();
-        let pubkey_bytes = &pubkey_bytes[1..];
-        pubkey_bytes.try_into().unwrap()
+        // let bytes = self.as_affine().to_encoded_point(true);
+        // let bytes = bytes.as_bytes();
+        let bytes = self.to_bytes();
+        // info!("bytes length: {:?}", bytes.len());
+        // let pubkey_bytes = &bytes[1..];
+        bytes.try_into().unwrap()
     }
     fn to_nostr_pubkey_str(&self) -> String {
         let b = self.to_nostr_pubkey_bytes();
@@ -124,15 +102,20 @@ pub fn get_device_secret_key() -> SecretKey {
     key.to_secret_key()
 }
 
+pub fn get_device_signing_key() -> SigningKey {
+    let key = read_key_from_efuse();
+    if key.is_none() {
+        warn!("No key found in efuse, using random key.");
+    }
+    let key = key.unwrap_or(random_key());
+    key.to_signing_key()
+}
+
 lazy_static::lazy_static! {
-    pub static ref SECRET_KEY: SecretKey = get_device_secret_key();
-    pub static ref SIGNER: SigningKey = SECRET_KEY.clone().into();
-    pub static ref SIGNER_MOVE: SigningKey = SECRET_KEY.clone().into();
-    pub static ref VERIFYING_KEY: VerifyingKey = SECRET_KEY.clone().to_verifying_key();
-    pub static ref VERIFYING_KEY_MOVE: VerifyingKey = SECRET_KEY.clone().to_verifying_key();
-    pub static ref ETH_ADDRESS_BYTES: [u8; 20] = VERIFYING_KEY.to_eth_address_bytes();
-    pub static ref ETH_ADDRESS_STRING: String = VERIFYING_KEY.to_eth_address_str();
-    pub static ref ETH_ADDRESS_BYTES_VEC: Vec<u8> = ETH_ADDRESS_BYTES.to_vec();
+    pub static ref SIGNER: SigningKey = get_device_signing_key();
+    pub static ref SIGNER_MOVE: SigningKey = SIGNER.clone();
+    pub static ref VERIFYING_KEY: VerifyingKey = SIGNER.to_verifying_key();
+    pub static ref VERIFYING_KEY_MOVE: VerifyingKey = VERIFYING_KEY.clone();
     pub static ref NOSTR_PUBKEY_BYTES: [u8; 32] = VERIFYING_KEY.to_nostr_pubkey_bytes();
     pub static ref NOSTR_PUBKEY_STRING: String = VERIFYING_KEY.to_nostr_pubkey_str();
     pub static ref NOSTR_PUBKEY_BYTES_VEC: Vec<u8> = NOSTR_PUBKEY_BYTES.to_vec();
