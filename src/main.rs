@@ -47,7 +47,9 @@ async fn async_main(executor: Arc<LocalExecutor<'_>>) -> Result<()> {
 async fn nostr_loop(timer: EspTaskTimerService) -> Result<()> {
     let mut t = timer.timer_async()?;
     loop {
-        send_new_event(create_random_event()).await?;
+        if let Err(e) = send_new_event(create_random_event()).await {
+            error!("Error sending event: {}", e);
+        }
         let _ = t.after(Duration::from_secs(APP_SEND_LOOP_DURATION)).await?;
     }
 }

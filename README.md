@@ -1,5 +1,5 @@
 ```
-# Deps
+# Install dependencies
 rustup toolchain install nightly --component rust-src
 cargo install ldproxy
 cargo install espflash --locked
@@ -14,9 +14,12 @@ espefuse.py burn_key BLOCK_KEY1 ./dev_key.bin USER --port /dev/cu.wchusbserial*
 # Confirm key
 espefuse.py summary --port /dev/cu.wchusbserial*
 
-# before building
-export PATH="$PATH:$PWD/.embuild/espressif/tools/riscv32-esp-elf/esp-13.2.0_20240530/riscv32-esp-elf/bin"
-
+# Remenber to edit build.env
 cp build.env.example build.env
 
+# Build and run (debug profile)
+cargo run
+
+# Build and flash (release profile)
+cargo espflash flash --release
 ```
